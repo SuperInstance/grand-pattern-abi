@@ -1,0 +1,12 @@
+[package]
+name = "grand-pattern-abi"
+version = "0.1.0"
+edition = "2021"
+description = "C ABI shared library — polyglot keystone for the Grand Pattern toolkit"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[dependencies]
+libc = "0.2"
