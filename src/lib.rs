@@ -3,6 +3,8 @@
 //! Exports C-compatible functions for the 6 modular primitives so that
 //! ANY language with a C FFI can use them.
 
+#![allow(clippy::missing_safety_doc)]
+
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::sync::Mutex;
@@ -57,17 +59,15 @@ pub struct CGraph {
 fn uuid_bytes() -> [u8; UUID_LEN] {
     let mut buf = [0u8; UUID_LEN];
     let hex = "0123456789abcdef";
-    let mut i = 0;
-    for (pos, &ch) in b"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".iter().enumerate() {
+    for (i, (pos, &ch)) in b"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".iter().enumerate().enumerate() {
         if i >= UUID_LEN { break; }
         buf[i] = if ch == b'x' || ch == b'y' {
             let v = ((pos as u64).wrapping_mul(6364136223846793005) >> 60) as usize;
-            let digit = if ch == b'y' { (v & 0x3) as usize + 8 } else { v };
+            let digit = if ch == b'y' { (v & 0x3) + 8 } else { v };
             hex.as_bytes()[digit]
         } else {
             ch
         };
-        i += 1;
     }
     buf
 }
@@ -135,7 +135,7 @@ pub extern "C" fn room_create(name: *const c_char) -> CRoom {
 }
 
 #[no_mangle]
-pub extern "C" fn room_perceive(room: *mut CRoom, data: *const f64, dim: usize) {
+pub unsafe extern "C" fn room_perceive(room: *mut CRoom, data: *const f64, dim: usize) {
     if room.is_null() || data.is_null() { return; }
     let room = unsafe { &mut *room };
     let data = unsafe { std::slice::from_raw_parts(data, dim.min(VIBE_DIMS)) };
@@ -146,7 +146,7 @@ pub extern "C" fn room_perceive(room: *mut CRoom, data: *const f64, dim: usize) 
 }
 
 #[no_mangle]
-pub extern "C" fn room_predict(room: *const CRoom, out: *mut f64, dim: usize) {
+pub unsafe extern "C" fn room_predict(room: *const CRoom, out: *mut f64, dim: usize) {
     if room.is_null() || out.is_null() { return; }
     let room = unsafe { &*room };
     let out = unsafe { std::slice::from_raw_parts_mut(out, dim.min(VIBE_DIMS)) };
@@ -158,7 +158,7 @@ pub extern "C" fn room_predict(room: *const CRoom, out: *mut f64, dim: usize) {
 }
 
 #[no_mangle]
-pub extern "C" fn room_tick(room: *mut CRoom) {
+pub unsafe extern "C" fn room_tick(room: *mut CRoom) {
     if room.is_null() { return; }
     let room = unsafe { &mut *room };
     room.tick_count += 1;
@@ -167,7 +167,7 @@ pub extern "C" fn room_tick(room: *mut CRoom) {
 }
 
 #[no_mangle]
-pub extern "C" fn room_surprise(room: *const CRoom) -> f64 {
+pub unsafe extern "C" fn room_surprise(room: *const CRoom) -> f64 {
     if room.is_null() { return 0.0; }
     unsafe { (*room).surprise }
 }
@@ -239,7 +239,7 @@ pub extern "C" fn graph_create(bpm: f64) -> CGraph {
 }
 
 #[no_mangle]
-pub extern "C" fn graph_add_room(graph: *mut CGraph, name: *const c_char) -> u32 {
+pub unsafe extern "C" fn graph_add_room(graph: *mut CGraph, name: *const c_char) -> u32 {
     if graph.is_null() { return u32::MAX; }
     with_graph(|inner| {
         let room = room_create(name);
@@ -251,7 +251,7 @@ pub extern "C" fn graph_add_room(graph: *mut CGraph, name: *const c_char) -> u32
 }
 
 #[no_mangle]
-pub extern "C" fn graph_add_edge(graph: *mut CGraph, from: u32, to: u32) {
+pub unsafe extern "C" fn graph_add_edge(graph: *mut CGraph, from: u32, to: u32) {
     if graph.is_null() { return; }
     with_graph(|inner| {
         inner.edges.push((from, to));
@@ -260,7 +260,7 @@ pub extern "C" fn graph_add_edge(graph: *mut CGraph, from: u32, to: u32) {
 }
 
 #[no_mangle]
-pub extern "C" fn graph_tick(graph: *mut CGraph) {
+pub unsafe extern "C" fn graph_tick(graph: *mut CGraph) {
     if graph.is_null() { return; }
     with_graph(|inner| {
         inner.tick += 1;
@@ -273,7 +273,7 @@ pub extern "C" fn graph_tick(graph: *mut CGraph) {
 }
 
 #[no_mangle]
-pub extern "C" fn graph_gossip(graph: *mut CGraph) {
+pub unsafe extern "C" fn graph_gossip(graph: *mut CGraph) {
     if graph.is_null() { return; }
     with_graph(|inner| {
         // Simple gossip: average vibes across connected rooms
@@ -291,13 +291,13 @@ pub extern "C" fn graph_gossip(graph: *mut CGraph) {
 }
 
 #[no_mangle]
-pub extern "C" fn graph_fleet_vibe(graph: *const CGraph) -> CVibe {
+pub unsafe extern "C" fn graph_fleet_vibe(graph: *const CGraph) -> CVibe {
     if graph.is_null() { return CVibe::default(); }
     unsafe { (*graph).fleet_vibe }
 }
 
 #[no_mangle]
-pub extern "C" fn graph_detect_anomaly(graph: *const CGraph, threshold: f64) -> u32 {
+pub unsafe extern "C" fn graph_detect_anomaly(graph: *const CGraph, threshold: f64) -> u32 {
     if graph.is_null() { return 0; }
     with_graph(|inner| {
         inner.rooms.iter().filter(|r| r.surprise > threshold).count() as u32
@@ -336,7 +336,7 @@ pub extern "C" fn murmur_create(source: *const c_char, vibe: CVibe, surprise: f6
 }
 
 #[no_mangle]
-pub extern "C" fn murmur_decay(murmur: *mut CMurmur) {
+pub unsafe extern "C" fn murmur_decay(murmur: *mut CMurmur) {
     if murmur.is_null() { return; }
     let m = unsafe { &mut *murmur };
     if m.ttl > 0 {
@@ -345,7 +345,7 @@ pub extern "C" fn murmur_decay(murmur: *mut CMurmur) {
 }
 
 #[no_mangle]
-pub extern "C" fn murmur_is_expired(murmur: *const CMurmur) -> bool {
+pub unsafe extern "C" fn murmur_is_expired(murmur: *const CMurmur) -> bool {
     if murmur.is_null() { return true; }
     unsafe { (*murmur).ttl == 0 }
 }
@@ -405,9 +405,8 @@ mod tests {
         let name = b"test\0" as *const u8 as *const c_char;
         let mut room = room_create(name);
         let data = [1.0, 2.0, 3.0, 4.0];
-        room_perceive(&mut room, data.as_ptr(), 4);
+        unsafe { room_perceive(&mut room, data.as_ptr(), 4); }
         assert_eq!(room.perception_count, 1);
-        // Vibe should have changed from zero
         assert!(room.vibe.dims[0].abs() > 0.0);
     }
 
@@ -416,10 +415,9 @@ mod tests {
         let name = b"test\0" as *const u8 as *const c_char;
         let mut room = room_create(name);
         let data = [5.0; 4];
-        room_perceive(&mut room, data.as_ptr(), 4);
+        unsafe { room_perceive(&mut room, data.as_ptr(), 4); }
         let mut out = [0.0; 4];
-        room_predict(&room, out.as_mut_ptr(), 4);
-        // Should return prediction > 0
+        unsafe { room_predict(&room, out.as_mut_ptr(), 4); }
         assert!(out[0].abs() > 0.0);
     }
 
@@ -428,9 +426,9 @@ mod tests {
         let name = b"test\0" as *const u8 as *const c_char;
         let mut room = room_create(name);
         assert_eq!(room.tick_count, 0);
-        room_tick(&mut room);
+        unsafe { room_tick(&mut room); }
         assert_eq!(room.tick_count, 1);
-        room_tick(&mut room);
+        unsafe { room_tick(&mut room); }
         assert_eq!(room.tick_count, 2);
     }
 
@@ -446,7 +444,7 @@ mod tests {
     fn test_graph_add_room_returns_id() {
         let mut g = graph_create(120.0);
         let name = b"room1\0" as *const u8 as *const c_char;
-        let id = graph_add_room(&mut g, name);
+        let id = unsafe { graph_add_room(&mut g, name) };
         assert_eq!(id, 0);
         assert_eq!(g.room_count, 1);
     }
@@ -455,9 +453,9 @@ mod tests {
     fn test_graph_add_edge_connects() {
         let mut g = graph_create(120.0);
         let name = b"r\0" as *const u8 as *const c_char;
-        graph_add_room(&mut g, name);
-        graph_add_room(&mut g, name);
-        graph_add_edge(&mut g, 0, 1);
+        unsafe { graph_add_room(&mut g, name); }
+        unsafe { graph_add_room(&mut g, name); }
+        unsafe { graph_add_edge(&mut g, 0, 1); }
         assert_eq!(g.edge_count, 1);
     }
 
@@ -465,9 +463,9 @@ mod tests {
     fn test_graph_tick_advances_all() {
         let mut g = graph_create(120.0);
         let name = b"r\0" as *const u8 as *const c_char;
-        graph_add_room(&mut g, name);
-        graph_add_room(&mut g, name);
-        graph_tick(&mut g);
+        unsafe { graph_add_room(&mut g, name); }
+        unsafe { graph_add_room(&mut g, name); }
+        unsafe { graph_tick(&mut g); }
         assert_eq!(g.tick, 1);
     }
 
@@ -475,10 +473,9 @@ mod tests {
     fn test_graph_fleet_vibe_average() {
         let mut g = graph_create(120.0);
         let name = b"r\0" as *const u8 as *const c_char;
-        graph_add_room(&mut g, name);
-        graph_add_room(&mut g, name);
-        let fv = graph_fleet_vibe(&g);
-        // Both rooms have neutral vibes, so average should be neutral
+        unsafe { graph_add_room(&mut g, name); }
+        unsafe { graph_add_room(&mut g, name); }
+        let fv = unsafe { graph_fleet_vibe(&g) };
         for &d in &fv.dims {
             assert!(d.abs() < 1e-10);
         }
@@ -496,7 +493,7 @@ mod tests {
         let v = vibe_new();
         let mut m = murmur_create(src, v, 0.5, 42);
         assert_eq!(m.ttl, 10);
-        murmur_decay(&mut m);
+        unsafe { murmur_decay(&mut m); }
         assert_eq!(m.ttl, 9);
     }
 
@@ -506,8 +503,8 @@ mod tests {
         let v = vibe_new();
         let mut m = murmur_create(src, v, 0.0, 0);
         m.ttl = 1;
-        assert!(!murmur_is_expired(&m));
-        murmur_decay(&mut m);
-        assert!(murmur_is_expired(&m));
+        assert!(!unsafe { murmur_is_expired(&m) });
+        unsafe { murmur_decay(&mut m); }
+        assert!(unsafe { murmur_is_expired(&m) });
     }
 }
