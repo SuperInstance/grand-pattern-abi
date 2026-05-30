@@ -5,6 +5,7 @@
 
 use std::ffi::CStr;
 use std::os::raw::c_char;
+use std::sync::Mutex;
 
 // ── C-compatible types ──────────────────────────────────────────────────────
 
@@ -177,22 +178,22 @@ pub extern "C" fn room_surprise(room: *const CRoom) -> f64 {
 struct GraphInner {
     rooms: Vec<CRoom>,
     edges: Vec<(u32, u32)>,
+    #[allow(dead_code)]
     bpm: f64,
     tick: u64,
 }
 
-static mut GRAPH_INNER: Option<GraphInner> = None;
+static GRAPH_INNER: Mutex<Option<GraphInner>> = Mutex::new(None);
 
 fn with_graph<F, R>(f: F) -> R
 where
     F: FnOnce(&mut GraphInner) -> R,
     R: Default,
 {
-    unsafe {
-        if GRAPH_INNER.is_none() {
-            return R::default();
-        }
-        f(GRAPH_INNER.as_mut().unwrap())
+    let mut lock = GRAPH_INNER.lock().unwrap();
+    match lock.as_mut() {
+        Some(inner) => f(inner),
+        None => R::default(),
     }
 }
 
@@ -225,14 +226,15 @@ fn snapshot_graph(inner: &GraphInner) -> CGraph {
 
 #[no_mangle]
 pub extern "C" fn graph_create(bpm: f64) -> CGraph {
-    unsafe {
-        GRAPH_INNER = Some(GraphInner {
+    {
+        let mut lock = GRAPH_INNER.lock().unwrap();
+        *lock = Some(GraphInner {
             rooms: Vec::new(),
             edges: Vec::new(),
             bpm,
             tick: 0,
         });
-        snapshot_graph(GRAPH_INNER.as_ref().unwrap())
+        snapshot_graph(lock.as_ref().unwrap())
     }
 }
 
